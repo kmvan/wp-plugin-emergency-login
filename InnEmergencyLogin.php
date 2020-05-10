@@ -10,7 +10,7 @@ declare(strict_types = 1);
 // Author URI: https://inn-studio.com
 // PHP Required: 7.3
 
-namespace InnStudio\Plugins\InnEmergencyLogin;
+namespace InnStudio\Plugin\InnEmergencyLogin;
 
 \defined('AUTH_KEY') || \http_response_code(500) && die;
 
