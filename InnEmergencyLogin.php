@@ -1,20 +1,24 @@
 <?php
 
+declare(strict_types = 1);
+
 // Plugin Name: INN Emergency Login | INN 紧急登录
 // Plugin URI: https://inn-studio.com/emergency-login
 // Description: See plugin official website. | 具体使用说明请参阅插件官网。
-// Author: Km.Van
-// Version: 1.0.0
+// Author: INN STUDIO
+// Version: 2.0.0
 // Author URI: https://inn-studio.com
-// PHP Required: 7.2
+// PHP Required: 7.3
 
 namespace InnStudio\Plugins\InnEmergencyLogin;
 
 \defined('AUTH_KEY') || \http_response_code(500) && die;
 
-class InnEmergencyLogin
+final class InnEmergencyLogin
 {
-    public function __construct(string $removePageUrl = '')
+    private const TOKEN_KEY = 'innEmergencyLoginToken';
+
+    public function __construct()
     {
         \add_action('plugins_loaded', [$this, 'filterPluginsLoaded']);
     }
@@ -37,9 +41,34 @@ class InnEmergencyLogin
         return \hash('sha512', \AUTH_KEY);
     }
 
+    private function getAdminRoleId(): string
+    {
+        global $wpdb;
+
+        $roles = \get_option("{$wpdb->prefix}user_roles") ?: \get_option('wp_user_roles') ?: [];
+
+        if ( ! $roles) {
+            return '';
+        }
+
+        foreach ($roles as $roleId => $role) {
+            $caps = $role['capabilities'] ?? [];
+
+            if ( ! $caps) {
+                continue;
+            }
+
+            if ((bool) ($caps['manage_options'] ?? false)) {
+                return $roleId;
+            }
+        }
+
+        return '';
+    }
+
     private function loginWithAdmin(): void
     {
-        $token = (string) \filter_input(\INPUT_GET, 'token', \FILTER_SANITIZE_STRING);
+        $token = (string) \filter_input(\INPUT_GET, self::TOKEN_KEY, \FILTER_SANITIZE_STRING);
 
         if ( ! $token || $token !== $this->genToken()) {
             return;
@@ -47,27 +76,32 @@ class InnEmergencyLogin
 
         global $wpdb;
 
-        $metaValue = 'a:1:{s:13:"administrator";b:1;}';
-        $sql       = <<<SQL
+        $sql = <<<SQL
 SELECT `user_id` FROM `{$wpdb->prefix}usermeta`
-WHERE `meta_key` = 'wp_capabilities'
-AND `meta_value` = %s
+WHERE (
+    `meta_key` = '{$wpdb->prefix}capabilities'
+    OR
+    `meta_key` = 'wp_capabilities'
+)
+AND `meta_value` LIKE %s
+LIMIT 0, 1
 SQL;
         $meta = $wpdb->get_row($wpdb->prepare(
             $sql,
-            $metaValue
+            "%{$this->getAdminRoleId()}%"
         ));
 
         if ( ! $meta) {
-            return;
+            die('Unable to locate admin user.');
         }
 
-        \wp_set_current_user($meta->user_id);
-        \wp_set_auth_cookie($meta->user_id, true);
+        \wp_set_current_user((int) $meta->user_id);
+        \wp_set_auth_cookie((int) $meta->user_id, true);
 
-        $url = \get_admin_url();
+        $adminUrl = \get_admin_url();
+
         echo <<<HTML
-<a href="{$url}">OK</a>
+<a href="{$adminUrl}">✔️ Logged as administrator.</a>
 HTML;
 
         die;
